@@ -1,36 +1,52 @@
 import * as vscode from "vscode";
-import { PathLike } from "fs";
 import * as lodash from "lodash";
 
-import { StatusBar } from "./ui/bar";
-import { getUsername } from "./scripts/utils";
-import { FilePermission } from "./scripts/permission";
+import { IApplication } from "./type";
+import { ChangePermissionCommand } from "./commands";
+import { PermissionStatusBar } from "./ui/bar";
 
-export class Application {
-  _status: StatusBar;
+export class Application implements IApplication {
+  _name: string;
+  _status: PermissionStatusBar;
+  _waitTimeToDebounce: number = 100;
 
-  constructor(context: vscode.ExtensionContext) {
-    this._status = new StatusBar(vscode.env.appName);
+  constructor() {
+    this._name = vscode.env.appName;
+    this._status = new PermissionStatusBar();
   }
 
-  /**
-   * Initalize application
-   */
-  async init() {
-    vscode.window.onDidChangeActiveTextEditor(this.onChangeFile);
-    this.onChangeFile();
+  get name() {
+    return this._name;
   }
 
-  /**
-   * Finalize application
-   */
-  fin() {
+  init = async (context: vscode.ExtensionContext) => {
+    const changePermissionCommand = new ChangePermissionCommand(
+      "change-permission"
+    );
+
+    // Register disposals
+    context.subscriptions.push(
+      changePermissionCommand.register(this.updateStatusWithActiveFile)
+    );
+    context.subscriptions.push(this._status.init(1, changePermissionCommand));
+
+    // Register event listener
+    vscode.window.tabGroups.onDidChangeTabs(this.updateStatusWithActiveFile);
+
+    // First view
+    this.updateStatusWithActiveFile();
+  };
+
+  fini = () => {
     if (this._status) {
       this._status.show(false);
     }
-  }
+  };
 
-  onChangeFile = () => {
+  /**
+   * Update permission status with current active file
+   */
+  updateStatusWithActiveFile = lodash.debounce(async () => {
     const { activeTab } = vscode.window.tabGroups.activeTabGroup;
     if (!activeTab) {
       this._status.show(false);
@@ -38,18 +54,7 @@ export class Application {
     }
 
     const { uri } = activeTab.input as { uri: vscode.Uri };
-    this.updateStatus(uri.path);
-  };
-
-  /**
-   * Update permission status
-   *
-   * @param fileName target
-   */
-  updateStatus = lodash.debounce(async (fileName: PathLike) => {
-    const permission = new FilePermission(fileName);
-    await permission.update();
-    this._status.update(`${permission.text()} (${getUsername()})`);
+    this._status.update(uri.path);
     this._status.show();
-  }, 100);
+  }, this._waitTimeToDebounce);
 }

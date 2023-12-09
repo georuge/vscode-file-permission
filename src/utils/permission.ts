@@ -1,9 +1,15 @@
-import { access, constants, PathLike } from "fs";
+import { access, constants, chmod, PathLike, Mode } from "fs";
 
-type PermissionType = {
+export type PermissionType = {
   read: boolean;
   write: boolean;
   execute: boolean;
+};
+
+export const changePermission = (path: PathLike, mode: Mode) => {
+  return new Promise<void>((resolve, reject) => {
+    chmod(path, mode, (err) => (err ? reject(err) : resolve()));
+  });
 };
 
 /**
@@ -33,40 +39,44 @@ export class FilePermission {
     this._hasExecute = false;
   }
 
-  get path(): PathLike {
+  path = (): PathLike => {
     return this._path;
-  }
+  };
 
   /**
    * Permission text
    *
    * @returns Show the symbols if allowed
    */
-  text(): string {
+  text = (): string => {
+    if (!this._hasRead && !this._hasWrite && !this._hasExecute) {
+      return "NO PERM";
+    }
+
     return (
       `${this._hasRead ? "R" : ""}` +
       `${this._hasWrite ? "W" : ""}` +
       `${this._hasExecute ? "X" : ""}`
     );
-  }
+  };
 
   /**
    * Get permissions
    *
    * @returns have or not each permmissions
    */
-  permissions(): PermissionType {
+  getPermissions = (): PermissionType => {
     return {
       read: this._hasRead,
       write: this._hasWrite,
       execute: this._hasExecute,
     } as const;
-  }
+  };
 
   /**
    * Get current permissions
    */
-  async update() {
+  update = async () => {
     const [hasRead, hasWrite, hasExecute] = await Promise.all([
       accessAsync(this._path, constants.R_OK),
       accessAsync(this._path, constants.W_OK),
@@ -76,5 +86,5 @@ export class FilePermission {
     this._hasRead = hasRead;
     this._hasWrite = hasWrite;
     this._hasExecute = hasExecute;
-  }
+  };
 }
